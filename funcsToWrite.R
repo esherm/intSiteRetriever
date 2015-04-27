@@ -1,6 +1,0 @@
-
-getUniqueSites
-getMRCs
-getMultihits
-getPCRbreaks
-setNameExists
