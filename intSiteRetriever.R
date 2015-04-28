@@ -33,17 +33,38 @@ getUniqueSites = function(setName, conn=NULL){
                                                            sites.chr,
                                                            sites.strand,
                                                            samples.sampleName
-                                                     FROM sites, samples
-                                                     WHERE sites.sampleID = samples.sampleID
-                                                     AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
-                                                   " AND sites.multihitID IS NULL;")))
+                                                    FROM sites, samples
+                                                    WHERE sites.sampleID = samples.sampleID
+                                                    AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                                  " AND sites.multihitID IS NULL;")))
   .disconnectFromDB(dbConn, conn)
   res
 }
 
 getMRCs = function(setName, conn=NULL){
+  #would it be better to make a function that takes a list of sites/siteIDs and spits out MRCs?
   dbConn = .connectToDB(conn)
+  res = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT sites.siteID
+                                                     FROM sites, samples
+                                                     WHERE sites.sampleID = samples.sampleID
+                                                     AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                                   " AND sites.multihitID IS NULL;")))
+ 
+  cs = c(0,cumsum(as.numeric(seqlengths(indexSeqInfo))))
   
+  foo = lapply(res$siteID, function(x){
+    set.seed(x)
+    rands = runif(3, 1, genomeLength*2)-genomeLength
+    cuts = cut(abs(rands), breaks=cs, labels=seqnames(indexSeqInfo))
+    
+    data.frame("siteID"=x,
+               "chr"=cuts,
+               "strand"=cut(sign(rands), breaks=c(-1,0,1), labels=c("-", "+"), include.lowest=T),
+               "position"=abs(rands) - cs[match(cuts, seqnames(indexSeqInfo))])
+    
+  })
+  
+  #need to worry about male/female
   .disconnectFromDB(dbConn, conn)
 }
 
@@ -61,11 +82,11 @@ getUniquePCRbreaks = function(setName, conn=NULL){
                                                            sites.chr,
                                                            sites.strand,
                                                            samples.sampleName
-                                                     FROM sites, samples, pcrbreakpoints
-                                                     WHERE (sites.sampleID = samples.sampleID AND
-                                                            pcrbreakpoints.siteID = sites.siteID)
-                                                     AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
-                                                   " AND sites.multihitID IS NULL;")))
+                                                    FROM sites, samples, pcrbreakpoints
+                                                    WHERE (sites.sampleID = samples.sampleID AND
+                                                          pcrbreakpoints.siteID = sites.siteID)
+                                                    AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                                  " AND sites.multihitID IS NULL;")))
   .disconnectFromDB(dbConn, conn)
   res
 }
