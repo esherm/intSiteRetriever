@@ -44,16 +44,16 @@ getUniqueSites = function(setName, conn=NULL){
 
 getMRCs = function(setName, conn=NULL){
   dbConn = .connectToDB(conn)
-  res = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT sites.siteID,
-                                                           samples.refGenome,
-                                                           samples.gender,
-                                                           samples.sampleName
-                                                    FROM sites, samples
-                                                    WHERE sites.sampleID = samples.sampleID
-                                                    AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
-                                                  " AND sites.multihitID IS NULL;")))
-
-  res = split(res, with(res, paste0(refGenome, ".", gender)))
+  sites.metadata = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT sites.siteID,
+                                                                      samples.refGenome,
+                                                                      samples.gender,
+                                                                      samples.sampleName
+                                                               FROM sites, samples
+                                                               WHERE sites.sampleID = samples.sampleID
+                                                               AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                                             " AND sites.multihitID IS NULL;")))
+  
+  sites.metadata = split(sites.metadata, with(sites.metadata, paste0(refGenome, ".", gender)))
   
   #hardcoding reference genome data/info for MRC creation might not be the best idea
   #but it will work for now.  Would it be appropriate to put into the database?
@@ -90,30 +90,42 @@ getMRCs = function(setName, conn=NULL){
   
   #could possibly be made faster by sticking refGenomeInfo in a DB and not having to worry
   #about all this stuff... currently benchmarking at .372sec/195 sites worth of MRCs
-  MRCs = do.call(rbind, lapply(res, function(sites){
+  allMRCs = do.call(rbind, lapply(sites.metadata, function(sites){
     refGenome = sites[1,"refGenome"]
     gender = sites[1,"gender"]
     indexSeqInfo = refGenomeInfo[[paste0(refGenome, ".", gender)]]
     
     cs = c(0,cumsum(as.numeric(seqlengths(indexSeqInfo))))
     genomeLength = max(cs)
-        
-    do.call(rbind, lapply(sites$siteID, function(x){
+    
+    mrcs = sapply(sites$siteID, function(x){
       set.seed(x)
       rands = round(runif(3, 1, genomeLength*2)-genomeLength)
       cuts = cut(abs(rands), breaks=cs, labels=seqnames(indexSeqInfo))
       
-      data.frame("siteID"=x,
-                 "chr"=cuts,
-                 "strand"=cut(sign(rands), breaks=c(-1,0,1), labels=c("-", "+"), include.lowest=T),
-                 "position"=abs(rands) - cs[match(cuts, seqnames(indexSeqInfo))])
+      #outputs in format of "siteID", "chr", "strand", "position"
+      list(rep(x,3),
+           as.character(cuts),
+           as.character(cut(sign(rands), breaks=c(-1,0,1), labels=c("-", "+"), include.lowest=T)),
+           abs(rands) - cs[match(cuts, seqnames(indexSeqInfo))])
       
-    }))
+    })
+    #this is ugly and requires as.character above but ~5X faster than outputting a list of
+    #data.frames and then rbinding them all together
+    mrcs = data.frame(matrix(unlist(t(mrcs)), nrow=nrow(sites)*3))
+    names(mrcs) = c("siteID", "chr", "strand", "position")
+    mrcs
   }))
-    
+  
+  #keep output consistant across functions
+  allMRCs$siteID = as.numeric(levels(allMRCs$siteID))[allMRCs$siteID]
+  allMRCs$position = as.numeric(levels(allMRCs$position))[allMRCs$position]
+  allMRCs$strand = as.character(allMRCs$strand)
+  allMRCs$chr = as.character(allMRCs$chr)
+  
   .Random.seed = seed #resetting the seed
   .disconnectFromDB(dbConn, conn)
-  merge(MRCs, do.call(rbind, res)[c("siteID", "sampleName")]) #not quite right
+  merge(allMRCs, do.call(rbind, sites.metadata)[c("siteID", "sampleName")])
 }
 
 getMultihits = function(setName, conn=NULL){
