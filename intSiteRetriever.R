@@ -152,3 +152,12 @@ setNameExists = function(setName, conn=NULL){
   setName %in% res$sampleName
 }
 
+getRefGenome = function(setName, conn=NULL){
+  dbConn = .connectToDB(conn)
+  res = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT samples.sampleName,
+                                                           samples.refGenome                                                    FROM samples
+                                                    WHERE samples.sampleName REGEXP ", .parseSetNames(setName, dbConn), ";")))
+  .disconnectFromDB(dbConn, conn)
+  res
+}
+
