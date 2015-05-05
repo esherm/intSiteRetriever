@@ -9,3 +9,12 @@ Functions:
 * getMRCs
 * setNameExists
 * getReferenceGenome
+
+# Testing of the library components
+
+Run in the R console:
+
+```bash
+library(testthat)
+test_dir(".")
+```
