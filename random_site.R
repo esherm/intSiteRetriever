@@ -19,7 +19,7 @@ get_reference_genome <- function(reference_genome) {
         stop(paste("Cannot find unique genome for", reference_genome))
     }
     BS_genome_full_name <- installed.genomes()[match_index]
-    load(BS_genome_full_name, character.only=T)
+    library(BS_genome_full_name, character.only=T)
     get(BS_genome_full_name)
 }
 
