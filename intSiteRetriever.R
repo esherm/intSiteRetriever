@@ -26,32 +26,34 @@
   dbQuoteString(dbConn, paste0(gsub("%", "(.*)", paste0("^", setName, "$")), collapse="|"))
 }
 
-
-getUniqueSites = function(setName, conn=NULL){
+.intSiteRetrieverQuery = function(command, conn){
   dbConn = .connectToDB(conn)
-  res = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT sites.siteID,
-                                                           sites.chr,
-                                                           sites.strand,
-                                                           sites.position,
-                                                           samples.sampleName
-                                                    FROM sites, samples
-                                                    WHERE sites.sampleID = samples.sampleID
-                                                    AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
-                                                  " AND sites.multihitID IS NULL;")))
+  res = suppressWarnings(dbGetQuery(dbConn, command))
   .disconnectFromDB(dbConn, conn)
   res
 }
 
+getUniqueSites = function(setName, conn=NULL){
+  .intSiteRetrieverQuery(paste0("SELECT sites.siteID,
+                                        sites.chr,
+                                        sites.strand,
+                                        sites.position,
+                                        samples.sampleName
+                                 FROM sites, samples
+                                 WHERE sites.sampleID = samples.sampleID
+                                 AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                 " AND sites.multihitID IS NULL;"), conn)
+}
+
 getMRCs = function(setName, conn=NULL){
-  dbConn = .connectToDB(conn)
-  sites.metadata = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT sites.siteID,
-                                                                      samples.refGenome,
-                                                                      samples.gender,
-                                                                      samples.sampleName
-                                                               FROM sites, samples
-                                                               WHERE sites.sampleID = samples.sampleID
-                                                               AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
-                                                             " AND sites.multihitID IS NULL;")))
+  sites.metadata = .intSiteRetrieverQuery(paste0("SELECT sites.siteID,
+                                                         samples.refGenome,
+                                                         samples.gender,
+                                                         samples.sampleName
+                                                  FROM sites, samples
+                                                  WHERE sites.sampleID = samples.sampleID
+                                                  AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                                  " AND sites.multihitID IS NULL;"), conn)
   
   sites.metadata = split(sites.metadata, with(sites.metadata, paste0(refGenome, ".", gender)))
   
@@ -136,40 +138,54 @@ getMultihits = function(setName, conn=NULL){
 }
 
 getUniquePCRbreaks = function(setName, conn=NULL){
-  dbConn = .connectToDB(conn)
-  res = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT pcrbreakpoints.breakpoint,
-                                                           pcrbreakpoints.count,
-                                                           sites.position AS integration,
-                                                           sites.siteID,
-                                                           sites.chr,
-                                                           sites.strand,
-                                                           samples.sampleName
-                                                    FROM sites, samples, pcrbreakpoints
-                                                    WHERE (sites.sampleID = samples.sampleID AND
-                                                          pcrbreakpoints.siteID = sites.siteID)
-                                                    AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
-                                                  " AND sites.multihitID IS NULL;")))
-  .disconnectFromDB(dbConn, conn)
-  res
+  .intSiteRetrieverQuery(paste0("SELECT pcrbreakpoints.breakpoint,
+                                        pcrbreakpoints.count,
+                                        sites.position AS integration,
+                                        sites.siteID,
+                                        sites.chr,
+                                        sites.strand,
+                                        samples.sampleName
+                                 FROM sites, samples, pcrbreakpoints
+                                 WHERE (sites.sampleID = samples.sampleID AND
+                                        pcrbreakpoints.siteID = sites.siteID)
+                                 AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                 " AND sites.multihitID IS NULL;"), conn)
 }
 
 #setNameExists shouldn't support MySQL % syntax, thus it needs its own dbQuoteString
 setNameExists = function(setName, conn=NULL){
   stopifnot(!any(grepl("%", setName)))
-  dbConn = .connectToDB(conn)
-  res = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT DISTINCT sampleName
+  
+  res = .intSiteRetrieverQuery(paste0("SELECT DISTINCT sampleName
                                                     FROM samples
-                                                    WHERE sampleName REGEXP ", dbQuoteString(dbConn, paste0("^", setName, "$", collapse="|")), ";")))
-  .disconnectFromDB(dbConn, conn)
+                                                    WHERE sampleName REGEXP ", dbQuoteString(dbConn, paste0("^", setName, "$", collapse="|")), ";"), conn)
   setName %in% res$sampleName
 }
 
 getRefGenome = function(setName, conn=NULL){
-  dbConn = .connectToDB(conn)
-  res = suppressWarnings(dbGetQuery(dbConn, paste0("SELECT samples.sampleName,
-                                                           samples.refGenome                                                    FROM samples
-                                                    WHERE samples.sampleName REGEXP ", .parseSetNames(setName, dbConn), ";")))
-  .disconnectFromDB(dbConn, conn)
-  res
+  .intSiteRetrieverQuery(paste0("SELECT samples.sampleName,
+                                        samples.refGenome
+                                 FROM samples
+                                 WHERE samples.sampleName REGEXP ", .parseSetNames(setName, dbConn), ";"), conn)
 }
 
+getReadCounts = function(setName, conn=NULL){
+  .intSiteRetrieverQuery(paste0("SELECT samples.sampleName,
+                                        SUM(pcrbreakpoints.count) AS readCount
+                                 FROM sites, samples, pcrbreakpoints
+                                 WHERE (sites.sampleID = samples.sampleID AND
+                                        pcrbreakpoints.siteID = sites.siteID)
+                                 AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                 " AND sites.multihitID IS NULL
+                                 GROUP BY sites.sampleID;"), conn)
+}
+
+getUniqueSiteCounts = function(setName, conn=NULL){
+  .intSiteRetrieverQuery(paste0("SELECT samples.sampleName,
+                                        COUNT(*) AS uniqueSites
+                                 FROM sites, samples
+                                 WHERE sites.sampleID = samples.sampleID
+                                 AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                 " AND sites.multihitID IS NULL
+                                 GROUP BY sites.sampleID;"), conn)
+}
