@@ -51,7 +51,7 @@ getUniqueSites <- function(setName, conn=NULL){
                                         samples.sampleName
                                  FROM sites, samples
                                  WHERE sites.sampleID = samples.sampleID
-                                 AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                 AND samples.sampleName REGEXP ", .parseSetNames(setName),
                                  " AND sites.multihitID IS NULL;"), conn)
 }
 
@@ -62,7 +62,7 @@ getMRCs <- function(setName, conn=NULL){
                                                          samples.sampleName
                                                   FROM sites, samples
                                                   WHERE sites.sampleID = samples.sampleID
-                                                  AND samples.sampleName REGEXP ", .parseSetNames(setName, dbConn),
+                                                  AND samples.sampleName REGEXP ", .parseSetNames(setName),
                                                   " AND sites.multihitID IS NULL;"), conn)
   
   sites.metadata <- split(sites.metadata, with(sites.metadata, paste0(refGenome, ".", gender)))
@@ -136,7 +136,6 @@ getMRCs <- function(setName, conn=NULL){
   allMRCs$chr <- as.character(allMRCs$chr)
   
   .Random.seed <- seed #resetting the seed
-  .disconnectFromDB(dbConn, conn)
   merge(allMRCs, do.call(rbind, sites.metadata)[c("siteID", "sampleName")])
 }
 
