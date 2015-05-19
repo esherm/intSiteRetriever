@@ -18,7 +18,7 @@
 #established
 .quoteForMySQL <- function(x){
   x <- gsub("'", "''", x, fixed=TRUE)
-  str <- paste("'", encodeString(x), "'", sep = "")
+  str <- paste("'", encodeString(x), "'", sep="")
   str[is.na(x)] <- "NULL"
   SQL(str)
 }
@@ -33,7 +33,7 @@
 #is tolerant of MySQL's '%' wildcard which is unfortunately used pretty extensively in legacy code
 #allows single distinct queries
 .parseSetNames <- function(setName){
-  .quoteForMySQL(paste0(gsub("%", "(.*)", paste0("^", setName, "$")), collapse="|"))
+  .quoteForMySQL(paste0("^", setName, "$", collapse="|"))
 }
 
 .intSiteRetrieverQuery <- function(command, conn){
@@ -158,14 +158,28 @@ getUniquePCRbreaks <- function(setName, conn=NULL){
                                  " AND sites.multihitID IS NULL;"), conn)
 }
 
-#setNameExists shouldn't support MySQL % syntax, thus it needs its own dbQuoteString
 setNameExists <- function(setName, conn=NULL){
-  stopifnot(!any(grepl("%", setName)))
-  
   res <- .intSiteRetrieverQuery(paste0("SELECT DISTINCT sampleName
                                                     FROM samples
-                                                    WHERE sampleName REGEXP ", .quoteForMySQL(paste0("^", setName, "$", collapse="|")), ";"), conn)
+                                                    WHERE sampleName REGEXP ", .parseSetNames(setName), ";"), conn)
+
   setName %in% res$sampleName
+}
+
+#only function that treats % as a wildcard rather than a literal
+getSampleNamesLike <- function(setName, conn=NULL){
+  parsedSetNames <- paste0(gsub("%", "(.*)", paste0("^", setName, "$")), collapse="|")
+
+  res <- .intSiteRetrieverQuery(paste0("SELECT DISTINCT sampleName
+                                                    FROM samples
+                                                    WHERE sampleName REGEXP ", .quoteForMySQL(parsedSetNames), ";"), conn)
+
+  sampleNames <- lapply(strsplit(parsedSetNames, "\\|")[[1]], function(x){
+    res$sampleName[grepl(x, res$sampleName)]
+  })
+
+  data.frame("sampleNames"=unlist(sampleNames, use.names=F),
+             "originalNames"=rep(setName, sapply(sampleNames, length)))
 }
 
 getRefGenome <- function(setName, conn=NULL){
