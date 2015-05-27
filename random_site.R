@@ -1,4 +1,5 @@
 library(BSgenome)
+library(dplyr)
 
 # generate uniform random position on the reference genome
 # for all chromosomes(but  gender specific)
@@ -25,34 +26,48 @@ get_reference_genome <- function(reference_genome) {
 
 #' for a given reference genome and gender generate random positions 
 #'
-#' @param number_of_positions total number of random positions to generate
+#' @param siteIDs vector of unique siteIDs for use as random seed
 #' @param reference_genome BS object reference genome(@seealso get_reference_genome)
-#' @param gender 'm' or 'f'
+#' @param gender 'm' or 'f
+#' @param number_of_positions total number of random positions to generate
 #' @param male_chr list of male-specific chromosomes prefixes(only 1 prefix is allowed at present)
-#' @return dataframe with columns: chr, strand, position
-get_random_positions <- function(
-    number_of_positions, reference_genome, gender, male_chr=c("chrY")
-) {
-    stopifnot(length(male_chr) == 1)
-    stopifnot(length(gender) == 1)
-    stopifnot(check_gender(gender))
+#' @return dataframe with columns: siteID, chr, strand, position
+get_random_positions <- function(siteIDs, reference_genome, gender,
+                                 number_of_positions=3, male_chr=c("chrY")){
+  stopifnot(length(male_chr) == 1)
+  stopifnot(length(gender) == 1)
+  stopifnot(check_gender(gender))
 
-    chr_len <- seqlengths(reference_genome)
-    stopifnot(any(grepl(male_chr, names(chr_len)))) # male chomosome is in genome
-    chr_len <- get_gender_specific_chr(chr_len, gender, male_chr)
+  chr_len <- seqlengths(reference_genome)
+  stopifnot(any(grepl(male_chr, names(chr_len)))) # male chomosome is in genome
+  chr_len <- get_gender_specific_chr(chr_len, gender, male_chr)
+  chr_len <- chr_len[names(chr_len) != "chrM"] #remove mitochondria
 
-    random_sites <- data.frame(
-        chr=character(number_of_positions), 
-        position=numeric(number_of_positions),
-        strand=character(number_of_positions),
-        stringsAsFactors=FALSE
-    )
+  cs <- c(0,cumsum(as.numeric(chr_len)))
+  genomeLength <- max(cs)
 
-    random_sites$chr <- get_random_chromosome(number_of_positions, chr_len)
-    random_sites$position <- get_random_positions_on_chromosome(
-        random_sites$chr, chr_len)
-    random_sites$strand <- get_random_strand(number_of_positions)
-    random_sites
+  seed <- .Random.seed #don't want to screw up global randomness
+
+  mrcs <- sapply(siteIDs, function(x){
+    set.seed(x)
+    rands <- round(runif(number_of_positions, 1, genomeLength*2)-genomeLength)
+    cuts <- cut(abs(rands), breaks=cs, labels=names(chr_len))
+
+    #outputs in format of "siteID", "chr", "strand", "position"
+    list(rep(x,number_of_positions),
+         as.character(cuts),
+         as.character(cut(sign(rands), breaks=c(-1,0,1), labels=c("-", "+"), include.lowest=T)),
+         abs(rands) - cs[match(cuts, names(chr_len))])
+  })
+
+  .Random.seed <- seed #resetting the seed
+
+  #this is ugly and requires as.character above but ~5X faster than outputting a list of
+  #data.frames and then rbinding them all together
+  mrcs <- data.frame(matrix(unlist(t(mrcs)), nrow=length(siteIDs)*number_of_positions))
+  names(mrcs) <- c("siteID", "chr", "strand", "position")
+
+  mrcs
 }
 
 #' generate random controls for sites
@@ -71,24 +86,12 @@ get_N_MRCs <- function(sites_meta, reference_genome, number_mrcs_per_site=3) {
     num_sites <- nrow(sites_meta)
     tot_num_mrcs <- num_sites * number_mrcs_per_site
 
-    mrcs <- data.frame(
-        siteID=sites_meta$siteID,
-        chr=character(tot_num_mrcs), 
-        position=numeric(tot_num_mrcs),
-        strand=character(tot_num_mrcs),
-        stringsAsFactors=FALSE
-    )
-
-    # for each site generate number_mrcs_per_site MRCS
-    sapply(1:nrow(sites_meta), function(i) {
-        start_index <- (i - 1) * number_mrcs_per_site + 1
-        end_index <- start_index + number_mrcs_per_site - 1
-        mrcs_for_site <- get_random_positions(
-            number_mrcs_per_site, reference_genome, sites_meta$gender[i])
-        mrcs_for_site <- cbind(siteID=sites_meta$siteID[i], mrcs_for_site)
-        mrcs[start_index:end_index, ] <<- mrcs_for_site
+    mrcs <- lapply(split(sites_meta, sites_meta$gender), function(sites){
+      get_random_positions(sites$siteID, reference_genome, sites[1,"gender"],
+                           number_mrcs_per_site)
     })
-    mrcs
+
+    unrowname(do.call(rbind, mrcs))
 }
 
 #' from vector of chromosome lengths with names creates vector for male or female
@@ -103,32 +106,6 @@ get_gender_specific_chr <- function(all_chromosomes, gender, male_chr) {
     chromosome_names <- names(all_chromosomes)
     female_chromosomes <- all_chromosomes[ ! grepl(male_chr, chromosome_names)]
     female_chromosomes
-}
-
-#' @param chr_len is a vector with names of chomosomes and values equal to length of the chr
-#' @param size number of random chromosomes to generate
-#' @return vector of chromosome names with weigths proportional to length of the chromosome
-get_random_chromosome <- function(size, chr_len) {
-    stopifnot( ! is.null(names(chr_len)))
-    sample(names(chr_len), size, replace=TRUE, prob=chr_len)
-}
-
-#' @param chr_length is a vector with names of chomosomes and values equal to length of the chr
-#' @param chromosomes vector of chromosome names for which random positions are generated
-#' @return vector of positions
-get_random_positions_on_chromosome <- function(chromosomes, chr_len) {
-    stopifnot( ! is.null(names(chr_len)))
-    stopifnot(chromosomes %in% names(chr_len))
-    random_pos <- sapply(chromosomes , function(chr) {
-        floor(runif(n=1, min=1, max=chr_len[[chr]] + 1))
-    })
-    random_pos
-}
-
-#' @return vector of "+" an "-" with the same probability
-get_random_strand <- function(size) {
-    valid_strand <- c("+", "-")
-    sample(valid_strand, size, replace=TRUE)
 }
 
 #' gender can only be male('m') or female('f')

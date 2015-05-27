@@ -7,7 +7,7 @@ reference <- get_reference_genome("hg18")
 test_that("generate_random_positions returns df", {
     randoms <- get_random_positions(1, reference, 'm')
     expect_named(randoms, 
-        c("chr","position", "strand"), ignore.order=TRUE)
+        c("siteID", "chr", "position", "strand"), ignore.order=TRUE)
 })
 
 test_that("generate_random_positions only accepts male or female", {
@@ -16,15 +16,14 @@ test_that("generate_random_positions only accepts male or female", {
 })
 
 test_that("size of the df is number_of_positions", {
-    number_of_positions <- seq(1:10)
     sapply(42, function(x)
-        expect_equal(nrow(get_random_positions(x, reference, 'f')), x)
+        expect_equal(nrow(get_random_positions(1, reference, 'f', x)), x)
     )
 })
 
 test_that("male-specific chromosome in the genome", {
     expect_error(get_random_positions(
-        3, reference, 'f', c("chr_EVER_UNKNOWN")))
+        3, reference, 'f', male_chr=c("chr_EVER_UNKNOWN")))
 })
 
 sites_meta <- data.frame( 
@@ -34,7 +33,7 @@ sites_meta <- data.frame(
 
 test_that("get_N_MRCs have all required columns", {
     mrcs <- get_N_MRCs(sites_meta, reference, 3)
-    expect_named(mrcs, c("siteID", "chr", "position", "strand"))
+    expect_named(mrcs, c("siteID", "chr", "position", "strand"), ignore.order=T)
 })
 
 test_that("get_N_MRCs only uses given siteIDs and do not introduce new one", {
