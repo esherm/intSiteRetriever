@@ -52,7 +52,8 @@ getUniqueSites <- function(setName, conn=NULL){
                                  FROM sites, samples
                                  WHERE sites.sampleID = samples.sampleID
                                  AND samples.sampleName REGEXP ",
-                                 .parseSetNames(setName), ";"), conn)
+                                 .parseSetNames(setName),
+                                "AND sites.multihitClusterID IS NULL;"), conn)
 }
 
 getMRCs <- function(setName, numberOfMRCs=3, conn=NULL){
@@ -64,7 +65,8 @@ getMRCs <- function(setName, numberOfMRCs=3, conn=NULL){
                                                   FROM sites, samples
                                                   WHERE sites.sampleID = samples.sampleID
                                                   AND samples.sampleName REGEXP ",
-                                                  .parseSetNames(setName), ";"), conn)
+                                                  .parseSetNames(setName),
+                                                  "AND sites.multihitClusterID IS NULL;"), conn)
 
   sites_meta <- data.frame("siteID"=sites.metadata$siteID,
                            "gender"=tolower(sites.metadata$gender))
@@ -81,11 +83,28 @@ getMRCs <- function(setName, numberOfMRCs=3, conn=NULL){
 }
 
 getMultihitPositions <- function(setName, conn=NULL){
-  stop("FUNCTION NOT IMPLEMENTED")
+  .intSiteRetrieverQuery(paste0("SELECT sites.siteID,
+                                        sites.chr,
+                                        sites.strand,
+                                        sites.position,
+                                        samples.sampleName
+                                 FROM sites, samples
+                                 WHERE sites.sampleID = samples.sampleID
+                                 AND samples.sampleName REGEXP ",
+                                .parseSetNames(setName),
+                                "AND sites.multihitClusterID IS NOT NULL;"), conn)
 }
 
 getMultihitLengths <- function(setName, conn=NULL){
-  stop("FUNCTION NOT IMPLEMENTED") 
+  .intSiteRetrieverQuery(paste0("SELECT DISTINCT multihitlengths.multihitClusterID,
+                                                 multihitlengths.length,
+                                                 multihitlengths.count
+                                        FROM sites, samples, multihitlengths
+                                 WHERE multihitlengths.multihitClusterID = sites.multihitClusterID
+                                 AND sites.sampleID = samples.sampleID
+                                 AND samples.sampleName REGEXP ",
+                                .parseSetNames(setName),
+                                "AND sites.multihitClusterID IS NOT NULL;"), conn)
 }
 
 getUniquePCRbreaks <- function(setName, conn=NULL){
@@ -100,7 +119,8 @@ getUniquePCRbreaks <- function(setName, conn=NULL){
                                  WHERE (sites.sampleID = samples.sampleID AND
                                         pcrbreakpoints.siteID = sites.siteID)
                                  AND samples.sampleName REGEXP ",
-                                 .parseSetNames(setName), ";"), conn)
+                                 .parseSetNames(setName), 
+                                "AND sites.multihitClusterID IS NULL;"), conn)
 }
 
 setNameExists <- function(setName, conn=NULL){
@@ -134,14 +154,15 @@ getRefGenome <- function(setName, conn=NULL){
                                  WHERE samples.sampleName REGEXP ", .parseSetNames(setName), ";"), conn)
 }
 
-getReadCounts <- function(setName, conn=NULL){
+getUniqueSiteReadCounts <- function(setName, conn=NULL){
   .intSiteRetrieverQuery(paste0("SELECT samples.sampleName,
                                         SUM(pcrbreakpoints.count) AS readCount
                                  FROM sites, samples, pcrbreakpoints
                                  WHERE (sites.sampleID = samples.sampleID AND
                                         pcrbreakpoints.siteID = sites.siteID)
                                  AND samples.sampleName REGEXP ", .parseSetNames(setName),
-                                 " GROUP BY sites.sampleID;"), conn)
+                                "AND sites.multihitClusterID IS NULL
+                                GROUP BY sites.sampleID;"), conn)
 }
 
 getUniqueSiteCounts <- function(setName, conn=NULL){
@@ -150,5 +171,6 @@ getUniqueSiteCounts <- function(setName, conn=NULL){
                                  FROM sites, samples
                                  WHERE sites.sampleID = samples.sampleID
                                  AND samples.sampleName REGEXP ", .parseSetNames(setName),
-                                 " GROUP BY sites.sampleID;"), conn)
+                                "AND sites.multihitClusterID IS NULL
+                                 GROUP BY sites.sampleID;"), conn)
 }
